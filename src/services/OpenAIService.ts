@@ -16,7 +16,7 @@ interface LineItemAnalysis {
 }
 
 class OpenAIServiceClass {
-  private readonly apiKey = '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';
+  private readonly apiKey = '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';
 
   async analyzePO(poData: any, rawText: string): Promise<AIAnalysisResult> {
     if (!this.apiKey) {
