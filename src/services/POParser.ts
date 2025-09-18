@@ -82,6 +82,9 @@ class POParserClass {
           message: 'Real OCR processing requires additional service configuration. This demo shows the upload workflow, but cannot extract actual text from images without proper OCR setup (Tesseract.js, Google Vision API, etc.)'
         };
       }
+
+      // Clean OCR errors before parsing
+      text = this.cleanOCRErrors(text);
       
       const poData: POData = {
         vehicle: {},
@@ -148,6 +151,41 @@ class POParserClass {
     }
   }
 
+  private cleanOCRErrors(text: string): string {
+    // Fix common OCR errors where $ is read as 5
+    // Look for patterns like "5123.45" at the beginning of cost fields and convert to "$123.45"
+    let cleanedText = text;
+
+    // Fix patterns in line items where 5 might be a misread $
+    // Pattern: number space 5digits.cents description
+    cleanedText = cleanedText.replace(
+      /(\d+\s+)5(\d{2,3}\.\d{2})(\s+[A-Z])/g,
+      (match, prefix, amount, suffix) => {
+        // Only apply fix if the amount looks reasonable (< $1000)
+        const numAmount = parseFloat(amount);
+        if (numAmount < 1000) {
+          return `${prefix}$${amount}${suffix}`;
+        }
+        return match;
+      }
+    );
+
+    // Fix patterns in totals/subtotals where 5 might be a misread $
+    cleanedText = cleanedText.replace(
+      /(total|subtotal|tax)([:\s]+)5(\d{2,4}\.\d{2})/gi,
+      '$1$2$$$3'
+    );
+
+    // Fix standalone cost patterns at line beginnings
+    cleanedText = cleanedText.replace(
+      /^(\s*)5(\d{1,3}\.\d{2})(\s)/gm,
+      '$1$$$2$3'
+    );
+
+    console.log('OCR cleaning applied');
+    return cleanedText;
+  }
+
   private extractValue(text: string, pattern: RegExp): string | undefined {
     const match = text.match(pattern);
     return match ? match[1]?.trim() : undefined;
@@ -182,8 +220,22 @@ class POParserClass {
         const [, quantity, cost, description, type, ataCode, additional] = match;
         
         const parsedQuantity = parseInt(quantity) || 1;
-        const parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
+        let parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
+        
+        // Additional check for costs that might be too high due to OCR errors
+        // If cost seems unreasonably high (>$5000 per unit), check if first digit might be misread $
         const unitPrice = parsedQuantity > 0 ? parsedCost / parsedQuantity : parsedCost;
+        if (unitPrice > 5000 && cost.length >= 3) {
+          // Try removing first digit and see if that makes more sense
+          const alternativeCost = cost.substring(1);
+          const alternativeParsed = parseFloat(alternativeCost.replace(/,/g, ''));
+          const alternativeUnit = parsedQuantity > 0 ? alternativeParsed / parsedQuantity : alternativeParsed;
+          
+          if (alternativeUnit < 1000) { // More reasonable price
+            parsedCost = alternativeParsed;
+            console.log(`OCR correction applied: ${cost} -> ${alternativeCost}`);
+          }
+        }
         
         const lineItem: LineItem = {
           id: itemId++,
@@ -215,8 +267,21 @@ class POParserClass {
         const [, quantity, cost, description, type, ataCode, additional] = altMatch;
         
         const parsedQuantity = parseInt(quantity) || 1;
-        const parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
+        let parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
+        
+        // Check for OCR error where $ was read as 5
         const unitPrice = parsedQuantity > 0 ? parsedCost / parsedQuantity : parsedCost;
+        if (unitPrice > 5000 && cost.startsWith('5') && cost.length >= 3) {
+          // Try removing the leading 5 and see if that makes more sense
+          const alternativeCost = cost.substring(1);
+          const alternativeParsed = parseFloat(alternativeCost.replace(/,/g, ''));
+          const alternativeUnit = parsedQuantity > 0 ? alternativeParsed / parsedQuantity : alternativeParsed;
+          
+          if (alternativeUnit < 1000) { // More reasonable price
+            parsedCost = alternativeParsed;
+            console.log(`OCR correction applied: ${cost} -> ${alternativeCost}`);
+          }
+        }
         
         const lineItem: LineItem = {
           id: itemId++,
