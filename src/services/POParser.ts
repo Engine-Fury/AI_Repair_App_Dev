@@ -135,6 +135,16 @@ class POParserClass {
       // Extract line items
       poData.lineItems = this.extractLineItems(text);
 
+      // Calculate total from all line items instead of extracting from text
+      const calculatedTotal = poData.lineItems.reduce((sum, item) => sum + item.total, 0);
+      
+      // Use calculated total if we have line items, otherwise try to extract from text
+      if (poData.lineItems.length > 0) {
+        poData.totalAmount = calculatedTotal;
+      } else {
+        poData.totalAmount = (totalStr || totalAltStr) ? parseFloat(((totalStr || totalAltStr) as string).replace(/,/g, '')) : undefined;
+      }
+
       console.log('Parsed PO data:', poData);
       
       return {
@@ -213,13 +223,17 @@ class POParserClass {
 
       // Pattern for: quantity $cost description TYPE atacode additional_info
       // Example: "2 $93.12 AIC RECIEVER - DRYER PART 01001065 REPLACE DOES NOT OPERATE PROPERLY"
-      const pattern = /^(\d+)\s+\$?([\d,]+\.?\d*)\s+(.+?)\s+(PART|LABOR|PM)\s+(\d+)\s*(.*?)$/i;
+      const pattern = /^(\S+)\s+\$?([\d,]+\.?\d*)\s+(.+?)\s+(PART|LABOR|PM)\s+(\d+)\s*(.*?)$/i;
       const match = cleanLine.match(pattern);
       
       if (match) {
         const [, quantity, cost, description, type, ataCode, additional] = match;
         
-        const parsedQuantity = parseInt(quantity) || 1;
+        // Handle cases where quantity is "[" or other non-numeric characters
+        let parsedQuantity = parseInt(quantity);
+        if (isNaN(parsedQuantity) || quantity === '[' || quantity.includes('[')) {
+          parsedQuantity = 1;
+        }
         let parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
         
         // Additional check for costs that might be too high due to OCR errors
@@ -260,13 +274,17 @@ class POParserClass {
 
       // Alternative pattern without $ sign
       // Example: "7 5267.68 AIC REFRIGERANT, (PER LB) PART 01001273 REPLACE MAINTENANCE"
-      const altPattern = /^(\d+)\s+([\d,]+\.?\d*)\s+(.+?)\s+(PART|LABOR|PM)\s+(\d+)\s*(.*?)$/i;
+      const altPattern = /^(\S+)\s+([\d,]+\.?\d*)\s+(.+?)\s+(PART|LABOR|PM)\s+(\d+)\s*(.*?)$/i;
       const altMatch = cleanLine.match(altPattern);
       
       if (altMatch) {
         const [, quantity, cost, description, type, ataCode, additional] = altMatch;
         
-        const parsedQuantity = parseInt(quantity) || 1;
+        // Handle cases where quantity is "[" or other non-numeric characters
+        let parsedQuantity = parseInt(quantity);
+        if (isNaN(parsedQuantity) || quantity === '[' || quantity.includes('[')) {
+          parsedQuantity = 1;
+        }
         let parsedCost = parseFloat(cost.replace(/,/g, '')) || 0;
         
         // Check for OCR error where $ was read as 5

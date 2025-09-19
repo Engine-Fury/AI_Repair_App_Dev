@@ -33,20 +33,7 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
     reason: false,
   });
 
-  // Column visibility state for labor table
-  const [laborColumns, setLaborColumns] = useState({
-    description: true,
-    correction: true,
-    cause: true,
-    workHours: true,
-    standardRange: true,
-    hoursVariance: true,
-    status: true,
-    reason: false,
-  });
-
   const [showPartsColumnSettings, setShowPartsColumnSettings] = useState(false);
-  const [showLaborColumnSettings, setShowLaborColumnSettings] = useState(false);
 
   if (!lineItems || lineItems.length === 0) return null;
 
@@ -177,126 +164,12 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
         </Card>
       )}
 
-      {/* Labor Hours Analysis Table */}
-      {laborRows.length > 0 && (
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Labor Hours Analysis</h2>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowLaborColumnSettings(!showLaborColumnSettings)}
-              >
-                <Settings2 className="h-4 w-4 mr-1" />
-                Columns
-              </Button>
-              <Badge variant="outline">{laborRows.length} labor items analyzed</Badge>
-            </div>
-          </div>
-
-          {/* Labor Column Settings */}
-          {showLaborColumnSettings && (
-            <div className="mb-4 p-4 border rounded-lg bg-muted/50">
-              <h4 className="text-sm font-medium mb-3">Show/Hide Columns</h4>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {Object.entries(laborColumns).map(([key, value]) => (
-                  <div key={key} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`labor-${key}`}
-                      checked={value}
-                      onCheckedChange={(checked) =>
-                        setLaborColumns(prev => ({ ...prev, [key]: !!checked }))
-                      }
-                    />
-                    <label htmlFor={`labor-${key}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      {key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Analyzing labor hours...</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                   <tr className="border-b border-border">
-                     {laborColumns.description && <th className="text-left py-2 font-medium text-muted-foreground">Description</th>}
-                     {laborColumns.correction && <th className="text-left py-2 font-medium text-muted-foreground">Correction</th>}
-                     {laborColumns.cause && <th className="text-left py-2 font-medium text-muted-foreground">Cause</th>}
-                     {laborColumns.workHours && <th className="text-left py-2 font-medium text-muted-foreground">Work Hours</th>}
-                     {laborColumns.standardRange && <th className="text-left py-2 font-medium text-muted-foreground">Standard Range (hrs)</th>}
-                     {laborColumns.hoursVariance && <th className="text-left py-2 font-medium text-muted-foreground">Hours Variance</th>}
-                     {laborColumns.status && <th className="text-left py-2 font-medium text-muted-foreground">Status</th>}
-                     {laborColumns.reason && <th className="text-left py-2 font-medium text-muted-foreground">Reason</th>}
-                   </tr>
-                </thead>
-                <tbody>
-                  {laborRows.map((row, idx) => {
-                    const matchingLabor = summary?.laborAnalysis.find(labor => 
-                      row.description.toLowerCase().includes(labor.component.toLowerCase().split(' ')[0])
-                    );
-                    
-                      return (
-                         <tr key={idx} className="border-b border-border hover:bg-muted/50">
-                           {laborColumns.description && <td className="py-3 text-left max-w-xs truncate">{row.description}</td>}
-                           {laborColumns.correction && <td className="py-3 text-left max-w-xs truncate">{row.correction || '-'}</td>}
-                           {laborColumns.cause && <td className="py-3 text-left max-w-xs truncate">{row.cause || '-'}</td>}
-                           {laborColumns.workHours && <td className="py-3 text-left font-mono">{row.quantity}h</td>}
-                          {laborColumns.standardRange && (
-                            <td className="py-3 text-left font-mono text-muted-foreground">
-                              {matchingLabor ? `${matchingLabor.standardMinHours.toFixed(1)} - ${matchingLabor.standardMaxHours.toFixed(1)}h` : '-'}
-                            </td>
-                          )}
-                          {laborColumns.hoursVariance && (
-                            <td className={`py-3 text-left font-mono ${
-                              matchingLabor ? (
-                                matchingLabor.variance > 20 ? 'text-red-600' : 
-                                matchingLabor.variance > 10 ? 'text-yellow-600' : 
-                                'text-green-600'
-                              ) : ''
-                            }`}>
-                              {matchingLabor ? `${matchingLabor.variance > 0 ? '+' : ''}${matchingLabor.variance.toFixed(1)}%` : '-'}
-                            </td>
-                          )}
-                          {laborColumns.status && (
-                            <td className="py-3 text-left">
-                              <Badge
-                                variant={
-                                  matchingLabor ? (
-                                    matchingLabor.status === 'reasonable' ? 'default' :
-                                    matchingLabor.status === 'high' ? 'secondary' :
-                                    'destructive'
-                                  ) : 'outline'
-                                }
-                              >
-                                {matchingLabor ? (
-                                  matchingLabor.status === 'reasonable' ? 'Reasonable' :
-                                  matchingLabor.status === 'high' ? 'High' :
-                                  'Excessive'
-                                ) : 'No Match'}
-                              </Badge>
-                            </td>
-                          )}
-                          {laborColumns.reason && (
-                            <td className="py-3 text-left max-w-xs">
-                              <span className="text-sm text-muted-foreground">
-                                {matchingLabor ? matchingLabor.reason : 'No matching standard found'}
-                              </span>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+      {/* Labor Hours Analysis */}
+      {summary?.laborAnalysis && summary.laborAnalysis.length > 0 && (
+        <LaborHoursAnalysis 
+          laborAnalysis={summary.laborAnalysis} 
+          loading={loading} 
+        />
       )}
 
       {/* Summary Metrics */}
