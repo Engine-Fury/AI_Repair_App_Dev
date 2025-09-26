@@ -146,7 +146,7 @@ export const UploadPO = () => {
         console.warn('AI analysis failed:', analysis.error);
       }
 
-      // Step 5: Market Price Verification
+      // Step 5: Market Price Verification (parts only, de-duplicated)
       if (parseResult.data.lineItems.length > 0) {
         setUploadStatus({
           step: 'pricing',
@@ -154,7 +154,22 @@ export const UploadPO = () => {
           message: 'Verifying market prices...'
         });
 
-        const priceResults = await SerpAPIService.compareLinePrices(parseResult.data.lineItems.slice(0, 3)); // Limit to first 3 items for demo
+        // Only analyze parts to avoid mixing labor/other rates
+        const partsOnly = parseResult.data.lineItems.filter((li) => (li.type || '').toLowerCase() === 'part');
+        // Deduplicate by partNumber -> ataCode -> description (normalized)
+        const dedupedParts = Array.from(
+          new Map(
+            partsOnly.map((li) => {
+              const key = String(li.partNumber || li.ataCode || li.description || '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+              return [key, li];
+            })
+          ).values()
+        );
+
+        const priceResults = await SerpAPIService.compareLinePrices(dedupedParts.slice(0, 3));
         setPriceComparison(priceResults);
       }
 
@@ -431,7 +446,7 @@ export const UploadPO = () => {
                       <tr className="border-b border-border">
                         <th className="text-left py-2 font-medium text-muted-foreground">Description</th>
                         <th className="text-left py-2 font-medium text-muted-foreground">Type</th>
-                        <th className="text-left py-2 font-medium text-muted-foreground">Part/Labor #</th>
+                        <th className="text-left py-2 font-medium text-muted-foreground">ATA Code</th>
                         <th className="text-center py-2 font-medium text-muted-foreground">Qty</th>
                         <th className="text-right py-2 font-medium text-muted-foreground">Unit Price</th>
                         <th className="text-right py-2 font-medium text-muted-foreground">Total</th>
@@ -447,7 +462,7 @@ export const UploadPO = () => {
                             </Badge>
                           </td>
                           <td className="py-3 font-mono text-xs">
-                            {item.partNumber || item.laborCode || '-'}
+                            {item.ataCode || '-'}
                           </td>
                           <td className="py-3 text-center">{item.quantity}</td>
                           <td className="py-3 text-right">

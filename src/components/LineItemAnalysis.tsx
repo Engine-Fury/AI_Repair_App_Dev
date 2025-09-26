@@ -38,8 +38,10 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
   if (!lineItems || lineItems.length === 0) return null;
 
   // Separate parts and labor items
-  const partsRows = rows.filter(row => !row.type.toLowerCase().includes('labor'));
-  const laborRows = rows.filter(row => row.type.toLowerCase().includes('labor'));
+  const partsRows = rows.filter(row => 
+    row.type.toLowerCase() === 'part' || row.type.toLowerCase() === 'other'
+  );
+  const laborRows = rows.filter(row => row.type.toLowerCase() === 'labor');
 
   return (
     <div className="space-y-6">
@@ -47,7 +49,7 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
       {partsRows.length > 0 && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Parts Analysis</h2>
+            <h2 className="text-lg font-semibold">Parts & Other Items Analysis</h2>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -57,7 +59,7 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
                 <Settings2 className="h-4 w-4 mr-1" />
                 Columns
               </Button>
-              <Badge variant="outline">{partsRows.length} parts analyzed</Badge>
+              <Badge variant="outline">{partsRows.length} items analyzed</Badge>
             </div>
           </div>
 

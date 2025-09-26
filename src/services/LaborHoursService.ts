@@ -225,7 +225,7 @@ export class LaborHoursService {
 
     for (const standard of this.laborStandards) {
       const score = this.calculateSimilarity(normalizedDesc, standard.Component.toLowerCase());
-      if (score > bestScore && score > 0.3) { // Minimum similarity threshold
+      if (score > bestScore && score > 0.25) { // Lowered threshold for better matching
         bestScore = score;
         bestMatch = standard;
       }
@@ -235,9 +235,24 @@ export class LaborHoursService {
   }
 
   private static calculateSimilarity(text1: string, text2: string): number {
-    // Simple keyword-based similarity scoring
-    const words1 = text1.split(/\s+/);
-    const words2 = text2.split(/\s+/);
+    // Normalize both texts for better matching
+    const normalize = (text: string) => text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '') // Remove punctuation
+      .replace(/\s+/g, ' ')    // Normalize whitespace
+      .trim();
+    
+    const norm1 = normalize(text1);
+    const norm2 = normalize(text2);
+    
+    // Direct substring match gets high score
+    if (norm1.includes(norm2) || norm2.includes(norm1)) {
+      return 0.8;
+    }
+    
+    // Word-based similarity scoring
+    const words1 = norm1.split(/\s+/);
+    const words2 = norm2.split(/\s+/);
     
     let matches = 0;
     for (const word1 of words1) {

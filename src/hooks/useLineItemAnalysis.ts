@@ -103,9 +103,11 @@ export function useLineItemAnalysis(
         totalBill += (item.total || itemsTotal || 0);
 
         // Labor hours analysis for labor/service items
-        if (type.toLowerCase().includes('labor') || 
-            desc.toLowerCase().includes('labor') ||
-            desc.toLowerCase().includes('service')) {
+        // Only analyze items that are explicitly marked as labor type
+        if (type.toLowerCase() === 'labor' || 
+            (type.toLowerCase() !== 'part' && 
+             (desc.toLowerCase().includes('labor') || 
+              desc.toLowerCase().includes('service')))) {
           
           // For labor items, quantity represents working hours
           const workingHours = qty; // quantity IS the hours for labor items
@@ -172,52 +174,68 @@ export function useLineItemAnalysis(
           }
           const shoppingSearchUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(searchQuery)}`;
 
-          // Fetch market price via SerpAPI
-          try {
-            const partCode = (item.partNumber || item.laborCode || '').toString();
-            const res = await SerpAPIService.getMarketPrice(desc, partCode);
-            if (res.success && res.averagePrice) {
-              marketAvg = res.averagePrice;
-              marketAvgTotal = marketAvg * qty;
-              totalMarketAvg += marketAvgTotal;
-              referenceLinks = (res.sources || []).slice(0, 3).map((s) => s.link);
+          // Only fetch market price for parts, not labor or other items
+          if (type.toLowerCase() === 'part') {
+            try {
+              const partCode = (item.partNumber || item.laborCode || '').toString();
+              const res = await SerpAPIService.getMarketPrice(desc, partCode);
+              if (res.success && res.averagePrice) {
+                marketAvg = res.averagePrice;
+                marketAvgTotal = marketAvg * qty;
+                totalMarketAvg += marketAvgTotal;
+                referenceLinks = (res.sources || []).slice(0, 3).map((s) => s.link);
 
-              // Calculate dollar and percentage differences
-              dollarDiff = unitCost - marketAvg;
-              percentDiff = ((unitCost - marketAvg) / marketAvg) * 100;
+                // Calculate dollar and percentage differences
+                dollarDiff = unitCost - marketAvg;
+                percentDiff = ((unitCost - marketAvg) / marketAvg) * 100;
 
-              // Simplified status based on market comparison (no threshold)
-              if (!reason) {
-                if (unitCost <= marketAvg) {
-                  status = 'Approved ✅';
-                  reason = `Unit cost ($${unitCost.toFixed(2)}) is at or below the market average ($${marketAvg.toFixed(2)}).`;
-                  approved += 1;
-                } else {
-                  // Any amount above market average is flagged for review
-                  const overagePercent = ((unitCost - marketAvg) / marketAvg) * 100;
-                  if (overagePercent <= 25) {
-                    status = 'Caution ⚠️';
-                    reason = `Unit cost ($${unitCost.toFixed(2)}) is ${overagePercent.toFixed(1)}% above market average ($${marketAvg.toFixed(2)}). Review recommended.`;
-                    caution += 1;
+                // Simplified status based on market comparison (no threshold)
+                if (!reason) {
+                  if (unitCost <= marketAvg) {
+                    status = 'Approved ✅';
+                    reason = `Unit cost ($${unitCost.toFixed(2)}) is at or below the market average ($${marketAvg.toFixed(2)}).`;
+                    approved += 1;
                   } else {
-                    status = 'Rejected ❌';
-                    reason = `Unit cost ($${unitCost.toFixed(2)}) is ${overagePercent.toFixed(1)}% above market average ($${marketAvg.toFixed(2)}). Significant overpayment detected.`;
-                    rejected += 1;
+                    // Any amount above market average is flagged for review
+                    const overagePercent = ((unitCost - marketAvg) / marketAvg) * 100;
+                    if (overagePercent <= 25) {
+                      status = 'Caution ⚠️';
+                      reason = `Unit cost ($${unitCost.toFixed(2)}) is ${overagePercent.toFixed(1)}% above market average ($${marketAvg.toFixed(2)}). Review recommended.`;
+                      caution += 1;
+                    } else {
+                      status = 'Rejected ❌';
+                      reason = `Unit cost ($${unitCost.toFixed(2)}) is ${overagePercent.toFixed(1)}% above market average ($${marketAvg.toFixed(2)}). Significant overpayment detected.`;
+                      rejected += 1;
+                    }
                   }
                 }
+              } else {
+                if (!reason) {
+                  status = 'Caution ⚠️';
+                  reason = 'No market price data found for this item. Please check the description or try a more common term.';
+                  caution += 1;
+                }
               }
-            } else {
+            } catch (err) {
               if (!reason) {
-                status = 'Rejected ❌';
-                reason = 'No market price data found for this item. Please check the description or try a more common term.';
-                rejected += 1;
+                status = 'Caution ⚠️';
+                reason = 'Market price verification failed. Check network or API key configuration.';
+                caution += 1;
               }
             }
-          } catch (err) {
+          } else if (type.toLowerCase() === 'labor') {
+            // For labor items, skip market price comparison and set appropriate status
             if (!reason) {
-              status = 'Rejected ❌';
-              reason = 'Market price verification failed. Check network or API key configuration.';
-              rejected += 1;
+              status = 'Approved ✅';
+              reason = 'Labor item - analyzed separately in Labor Hours Analysis section.';
+              approved += 1;
+            }
+          } else {
+            // For other items, skip market price comparison
+            if (!reason) {
+              status = 'Approved ✅';
+              reason = 'Non-part item - no market price comparison available.';
+              approved += 1;
             }
           }
 
