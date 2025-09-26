@@ -24,7 +24,7 @@ interface PriceComparisonResult {
 }
 
 class SerpAPIServiceClass {
-  private readonly apiKey = '5d0343ae28be99b0554fb2ba9870a3aaa0cdbd356729cbba9577b5b87a45ac22';
+  private readonly apiKey = '924ebb0dd6fbf32c375bf1e5c5d7768116d4b3b04a9112c64c52673a32dd73ef';
 
   async getMarketPrice(itemDescription: string, partNumber?: string): Promise<MarketPriceResult> {
     if (!this.apiKey) {
