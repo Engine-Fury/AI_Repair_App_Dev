@@ -14,7 +14,16 @@ class OCRServiceClass {
   private async initializeWorker() {
     if (!this.worker) {
       console.log('Initializing Tesseract OCR worker...');
-      this.worker = await createWorker('eng');
+      try {
+        this.worker = await createWorker('eng', 1, {
+          logger: (m) => console.log('Tesseract:', m),
+          errorHandler: (err) => console.error('Tesseract error:', err)
+        });
+        console.log('Tesseract worker initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize Tesseract worker:', error);
+        throw new Error('Failed to initialize OCR engine. Please try refreshing the page.');
+      }
     }
     return this.worker;
   }
