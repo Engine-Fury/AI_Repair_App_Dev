@@ -15,7 +15,7 @@ export interface LineItem {
   quantity: string;
   unitPrice: number;
   total: number;
-  type: 'part' | 'labor' | 'other';
+  type: 'PART' | 'LABOR' | 'PM' | 'OTHER';
   ataCode?: string;
   correction?: string;
   cause?: string;
