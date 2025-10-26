@@ -24,13 +24,13 @@ export interface VehicleCheckResult {
 }
 
 export class VehicleCheckService {
-  private static readonly API_BASE = 'http://localhost:3001/api/vehicle';
+  private static readonly API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
   static async checkVehicle(vehicleNumber: string, currentPOAmount: number = 0): Promise<VehicleCheckResult> {
     try {
       console.log(`🔍 Checking vehicle ${vehicleNumber} with PO amount $${currentPOAmount}`);
       
-      const response = await fetch(`${this.API_BASE}/checks`, {
+      const response = await fetch(`${this.API_BASE}/api/vehicle/checks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

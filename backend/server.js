@@ -11,7 +11,18 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// Configure CORS to allow specific frontend origins
+app.use(cors({
+  origin: [
+    'http://localhost:8081',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://repairai.withfury.ai'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(express.json());
 
 // Read RSA private key for Snowflake JWT authentication
