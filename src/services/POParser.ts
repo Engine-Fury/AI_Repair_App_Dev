@@ -5,6 +5,7 @@ export interface VehicleInfo {
   model?: string;
   mileage?: string;
   licensePlate?: string;
+  vehicleNumber?: string;
 }
 
 export interface LineItem {
@@ -32,8 +33,6 @@ export interface POData {
   subtotal?: number;
   tax?: number;
   totalAmount?: number;
-  terms?: string;
-  authorizedBy?: string;
 }
 
 export interface ParseResult {
@@ -45,7 +44,7 @@ export interface ParseResult {
 
 class POParserClass {
   private extractPatterns = {
-    poNumber: /(?:PO#?\s*)(\d+)/i,
+    poNumber: /(?:PO\s*#?\s*:?\s*|Purchase\s*Order\s*#?\s*:?\s*|P\.O\.\s*#?\s*:?\s*|PO\s*NUMBER\s*:?\s*)([A-Z0-9-]+)/i,
     date: /(?:Date\s*)(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/i,
     vendor: /(?:Vendor:?\s*)([^0-9\n\r]+?)(?=\d|\n|$)/i,
     vendorAddress: /(?:Vendor:.*\n)(.*?)(?=National Account|Phone|$)/is,
@@ -53,6 +52,7 @@ class POParserClass {
     
     // Vehicle patterns - updated for your format
     vehicleInfo: /(\d{4})\s+([A-Z\s]+)\s+([A-Z0-9]+)/i, // "2024 FORD F59"
+    vehicleNumber: /(?:Vehicle\s*:?\s*)(\d+)/i, // Extract vehicle number like "240036"
     vin: /(?:VIN:?\s*)([A-Z0-9]{17})/i,
     year: /(\d{4})\s+[A-Z]+/i, // Extract year from "2024 FORD F59"
     make: /\d{4}\s+([A-Z]+)/i, // Extract make from "2024 FORD F59"  
@@ -63,11 +63,7 @@ class POParserClass {
     // Financial patterns
     subtotal: /(?:Subtotal:?\s*)\$?([\d,]+\.?\d*)/i,
     tax: /(?:Tax.*?:?\s*)\$?([\d,]+\.?\d*)/i,
-    total: /(?:Total\s*Amount:?\s*)\$?([\d,]+\.?\d*)/i,
-    
-    // Other patterns
-    terms: /(?:Terms:?\s*)([^\n\r]+)/i,
-    authorizedBy: /(?:Authorized\s*By:?\s*)([^\n\r]+)/i
+    total: /(?:Total\s*Amount:?\s*)\$?([\d,]+\.?\d*)/i
   };
 
   parse(text: string): ParseResult {
@@ -92,7 +88,44 @@ class POParserClass {
       };
 
       // Extract basic PO information
+      console.log('Extracting PO number from text...');
       poData.poNumber = this.extractValue(text, this.extractPatterns.poNumber);
+      
+      // If no PO number found with standard pattern, try alternative approaches
+      if (!poData.poNumber) {
+        console.log('Standard PO pattern failed, trying alternatives...');
+        
+        // Try more flexible patterns
+        const alternativePatterns = [
+          /PO\s*#?\s*([A-Z0-9-]+)/i,                    // Basic PO# format
+          /Purchase\s*Order\s*([A-Z0-9-]+)/i,          // Purchase Order format
+          /Order\s*#?\s*([A-Z0-9-]+)/i,                // Order# format  
+          /^([A-Z0-9-]{4,})/m,                         // Any alphanumeric at start of line (4+ chars)
+        ];
+        
+        for (const pattern of alternativePatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            poData.poNumber = match[1].trim();
+            console.log('Found PO number with alternative pattern:', poData.poNumber);
+            break;
+          }
+        }
+      }
+      
+      // Final fallback - if still no PO number, generate one based on available data
+      if (!poData.poNumber) {
+        console.log('No PO number found, generating fallback...');
+        const today = new Date();
+        const timestamp = today.getFullYear() + 
+                         (today.getMonth() + 1).toString().padStart(2, '0') + 
+                         today.getDate().toString().padStart(2, '0');
+        poData.poNumber = `PO-${timestamp}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+        console.log('Generated fallback PO number:', poData.poNumber);
+      }
+      
+      console.log('Final extracted PO number:', poData.poNumber);
+      
       poData.date = this.extractValue(text, this.extractPatterns.date);
       poData.vendor = this.extractValue(text, this.extractPatterns.vendor);
       poData.vendorAddress = this.extractValue(text, this.extractPatterns.vendorAddress);
@@ -103,6 +136,7 @@ class POParserClass {
       poData.vendorPhone = this.extractValue(text, this.extractPatterns.vendorPhone);
       
       // Extract vehicle information
+      poData.vehicle.vehicleNumber = this.extractValue(text, this.extractPatterns.vehicleNumber);
       poData.vehicle.vin = this.extractValue(text, this.extractPatterns.vin);
       poData.vehicle.year = this.extractValue(text, this.extractPatterns.year);
       poData.vehicle.make = this.extractValue(text, this.extractPatterns.make)?.trim();
@@ -127,10 +161,6 @@ class POParserClass {
       poData.subtotal = subtotalStr ? parseFloat(subtotalStr.replace(/,/g, '')) : undefined;
       poData.tax = taxStr ? parseFloat(taxStr.replace(/,/g, '')) : undefined;
       poData.totalAmount = (totalStr || totalAltStr) ? parseFloat(((totalStr || totalAltStr) as string).replace(/,/g, '')) : undefined;
-
-      // Extract other information
-      poData.terms = this.extractValue(text, this.extractPatterns.terms);
-      poData.authorizedBy = this.extractValue(text, this.extractPatterns.authorizedBy);
 
       // Extract line items
       poData.lineItems = this.extractLineItems(text);
@@ -198,6 +228,11 @@ class POParserClass {
 
   private extractValue(text: string, pattern: RegExp): string | undefined {
     const match = text.match(pattern);
+    if (pattern.source.includes('PO')) {
+      console.log('PO Number pattern matching:', pattern);
+      console.log('Text sample for PO search:', text.substring(0, 200));
+      console.log('Match result:', match);
+    }
     return match ? match[1]?.trim() : undefined;
   }
 

@@ -1,0 +1,21 @@
+{
+  "name": "Fury AI - PO Redlining",
+  "short_name": "Fury AI",
+  "description": "Advanced AI-powered fleet repair bill redlining and automation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/img/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

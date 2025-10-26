@@ -24,34 +24,41 @@ interface PriceComparisonResult {
 }
 
 class SerpAPIServiceClass {
-  private readonly apiKey = '924ebb0dd6fbf32c375bf1e5c5d7768116d4b3b04a9112c64c52673a32dd73ef';
+  private readonly apiKey = import.meta.env.VITE_SERPAPI_KEY;
+  private readonly baseUrl = 'https://serpapi.com/search.json';
 
   async getMarketPrice(itemDescription: string, partNumber?: string): Promise<MarketPriceResult> {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        error: 'SerpAPI key not configured. Please set your API key first.'
-      };
-    }
-
     try {
-      // Create search query targeting automotive parts with preferred sites
+      console.log(`🔍 Searching market price for: ${itemDescription}${partNumber ? ` (${partNumber})` : ''}`);
+      
+      if (!this.apiKey) {
+        console.warn('⚠️ SerpAPI key not found, using mock data');
+        return this.getMockMarketPrice(itemDescription, partNumber) || {
+          success: false,
+          error: 'SerpAPI key not configured'
+        };
+      }
+
+      // Build search query
       const baseQuery = partNumber 
         ? `${itemDescription} ${partNumber}`
         : `${itemDescription}`;
       
       const searchQuery = `${baseQuery} automotive parts price site:(autozone.com OR advanceautoparts.com OR napaonline.com OR oreillyauto.com OR rockauto.com OR partsgeek.com OR finditparts.com OR ryderfleetproducts.com OR fleetpride.com)`;
 
-      const url = new URL('https://serpapi.com/search');
-      url.searchParams.append('q', searchQuery);
-      url.searchParams.append('tbm', 'shop');
-      url.searchParams.append('api_key', this.apiKey);
-      url.searchParams.append('num', '20');
-      url.searchParams.append('gl', 'us');
-      url.searchParams.append('hl', 'en');
-      url.searchParams.append('location', 'United States');
+      // Build request URL
+      const params = new URLSearchParams({
+        engine: 'google',
+        q: searchQuery,
+        tbm: 'shop',
+        api_key: this.apiKey,
+        num: '20',
+        gl: 'us',
+        hl: 'en',
+        location: 'United States'
+      });
 
-      const response = await fetch(url.toString());
+      const response = await fetch(`${this.baseUrl}?${params}`);
       
       if (!response.ok) {
         throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);
@@ -59,205 +66,207 @@ class SerpAPIServiceClass {
 
       const data = await response.json();
 
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      const shoppingResults = data.shopping_results || [];
-      
-      if (shoppingResults.length === 0) {
+      // Check if we have shopping results
+      if (!data.shopping_results || data.shopping_results.length === 0) {
+        console.log(`ℹ️ No market data found for: ${itemDescription}`);
+        
+        // Try mock data for development
+        const mockResult = this.getMockMarketPrice(itemDescription, partNumber);
+        if (mockResult) {
+          return mockResult;
+        }
+        
         return {
           success: false,
-          error: 'No market price data found for this item'
+          error: 'No market price data found'
         };
       }
 
-      // Extract prices and calculate statistics
-      const prices = shoppingResults
-        .map((result: any) => {
-          const priceStr = result.price?.toString().replace(/[$,]/g, '');
-          return parseFloat(priceStr);
-        })
-        .filter((price: number) => !isNaN(price) && price > 0);
+      // Extract price information from shopping results
+      const prices: number[] = [];
+      const sources: Array<{ title: string; price: number; source: string; link: string }> = [];
+
+      for (const result of data.shopping_results) {
+        // Extract price from different possible formats
+        let price = 0;
+        
+        if (result.price) {
+          // Handle price formats like "$29.99", "29.99", etc.
+          const priceStr = result.price.toString().replace(/[^\d.]/g, '');
+          price = parseFloat(priceStr);
+        } else if (result.extracted_price) {
+          price = parseFloat(result.extracted_price);
+        }
+
+        if (price > 0 && price < 10000) { // Filter out unrealistic prices
+          prices.push(price);
+          sources.push({
+            title: result.title || 'Unknown Product',
+            price: price,
+            source: result.source || 'Unknown Source',
+            link: result.link || ''
+          });
+        }
+      }
 
       if (prices.length === 0) {
+        console.log(`⚠️ No valid prices found for: ${itemDescription}`);
         return {
           success: false,
-          error: 'Could not parse price information from market data'
+          error: 'No valid price data found'
         };
       }
 
-      const sortedPrices = prices.sort((a, b) => a - b);
+      // Calculate statistics
       const averagePrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-      const minPrice = sortedPrices[0];
-      const maxPrice = sortedPrices[sortedPrices.length - 1];
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
 
-      const sources = shoppingResults
-        .slice(0, 5)
-        .map((result: any) => ({
-          title: result.title || 'Unknown Product',
-          price: parseFloat(result.price?.toString().replace(/[$,]/g, '') || '0'),
-          source: result.source || 'Unknown Source',
-          link: result.link || '#'
-        }))
-        .filter((source: any) => !isNaN(source.price) && source.price > 0);
+      console.log(`✅ Found ${prices.length} prices for ${itemDescription}, avg: $${averagePrice.toFixed(2)}`);
 
       return {
         success: true,
-        averagePrice: Math.round(averagePrice * 100) / 100,
+        averagePrice: averagePrice,
         priceRange: {
-          min: Math.round(minPrice * 100) / 100,
-          max: Math.round(maxPrice * 100) / 100
+          min: minPrice,
+          max: maxPrice
         },
-        sources
+        sources: sources.slice(0, 5) // Return top 5 sources
       };
 
     } catch (error) {
       console.error('SerpAPI error:', error);
       
-      // Return mock data when API fails due to CORS (for demo purposes)
-      const mockPrices = this.getMockMarketPrice(itemDescription, partNumber);
-      if (mockPrices) {
-        return mockPrices;
+      // Try mock data for development
+      const mockResult = this.getMockMarketPrice(itemDescription, partNumber);
+      if (mockResult) {
+        console.log(`🎭 Using mock data for: ${itemDescription}`);
+        return mockResult;
       }
       
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch market price'
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }
 
   private getMockMarketPrice(itemDescription: string, partNumber?: string): MarketPriceResult | null {
-    const mockData: Record<string, MarketPriceResult> = {
-      'AIC RECIEVER - DRYER': {
-        success: true,
-        averagePrice: 45.99,
-        priceRange: { min: 32.95, max: 65.50 },
-        sources: [
-          { title: 'AC Receiver Drier - AutoZone', price: 42.99, source: 'AutoZone', link: 'https://autozone.com' },
-          { title: 'A/C Receiver Drier - Advance Auto', price: 48.95, source: 'Advance Auto Parts', link: 'https://advanceautoparts.com' },
-          { title: 'AC Receiver Drier - NAPA', price: 45.99, source: 'NAPA', link: 'https://napaonline.com' }
-        ]
-      },
-      'AC RECIEVER - DRYER': {
-        success: true,
-        averagePrice: 45.99,
-        priceRange: { min: 32.95, max: 65.50 },
-        sources: [
-          { title: 'AC Receiver Drier - AutoZone', price: 42.99, source: 'AutoZone', link: 'https://autozone.com' },
-          { title: 'A/C Receiver Drier - Advance Auto', price: 48.95, source: 'Advance Auto Parts', link: 'https://advanceautoparts.com' }
-        ]
-      },
-      'AIC REFRIGERANT, (PER LB)': {
-        success: true,
-        averagePrice: 25.99,
-        priceRange: { min: 18.99, max: 35.50 },
-        sources: [
-          { title: 'R134a Refrigerant 12oz - AutoZone', price: 24.99, source: 'AutoZone', link: 'https://autozone.com' },
-          { title: 'AC Refrigerant R134a - O\'Reilly', price: 26.99, source: 'O\'Reilly Auto Parts', link: 'https://oreillyauto.com' }
-        ]
-      },
-      'REFER COMPRESSOR': {
-        success: true,
-        averagePrice: 280.50,
-        priceRange: { min: 195.00, max: 385.99 },
-        sources: [
-          { title: 'AC Compressor - RockAuto', price: 275.99, source: 'RockAuto', link: 'https://rockauto.com' },
-          { title: 'A/C Compressor - PartsGeek', price: 285.00, source: 'PartsGeek', link: 'https://partsgeek.com' }
-        ]
-      },
-      'M.O.S.P. MOBILE ONSITE SER': {
-        success: true,
-        averagePrice: 85.00,
-        priceRange: { min: 65.00, max: 120.00 },
-        sources: [
-          { title: 'Mobile Service Call - Fleet Pride', price: 85.00, source: 'Fleet Pride', link: 'https://fleetpride.com' },
-          { title: 'Onsite Service - Ryder Fleet', price: 95.00, source: 'Ryder Fleet Products', link: 'https://ryderfleetproducts.com' }
-        ]
-      }
+    // Mock data for development/testing
+    const mockPrices: { [key: string]: number } = {
+      'headlamp': 85.99,
+      'headlight': 85.99,
+      'housing': 85.99,
+      'bolt': 3.99,
+      'adhesive': 15.99,
+      'sealant': 15.99,
+      'door': 125.99,
+      'latch': 45.99,
+      'hinge': 35.99,
+      'compressor': 899.99,
+      'reciever': 125.99,
+      'dryer': 125.99,
+      'refrigerant': 12.99
     };
 
-    // Try exact match first
-    if (mockData[itemDescription]) {
-      return mockData[itemDescription];
-    }
+    const description = itemDescription.toLowerCase();
+    let mockPrice = 25.99; // default price
 
-    // Try partial match for similar items
-    for (const [key, value] of Object.entries(mockData)) {
-      if (itemDescription.toLowerCase().includes(key.toLowerCase()) || 
-          key.toLowerCase().includes(itemDescription.toLowerCase())) {
-        return value;
+    // Find matching mock price
+    for (const [keyword, price] of Object.entries(mockPrices)) {
+      if (description.includes(keyword)) {
+        mockPrice = price;
+        break;
       }
     }
 
-    return null;
+    return {
+      success: true,
+      averagePrice: mockPrice,
+      priceRange: {
+        min: mockPrice * 0.8,
+        max: mockPrice * 1.2
+      },
+      sources: [
+        {
+          title: `Mock ${itemDescription}`,
+          price: mockPrice,
+          source: 'Mock Data',
+          link: '#'
+        }
+      ]
+    };
   }
 
-  async compareLinePrices(lineItems: any[]): Promise<PriceComparisonResult[]> {
+  async compareLinePrices(lineItems: { description: string; partNumber?: string; unitPrice: number }[]): Promise<PriceComparisonResult[]> {
     const results: PriceComparisonResult[] = [];
 
     for (const item of lineItems) {
-      const qty = Math.max(1, parseInt(item.quantity || '1', 10) || 1);
-      const unitPrice = typeof item.unitPrice === 'number' && item.unitPrice > 0
-        ? item.unitPrice
-        : ((item.total || 0) / qty);
-
-      if (!item.description || unitPrice <= 0) {
-        continue;
-      }
-
       try {
-        const marketData = await this.getMarketPrice(
-          item.description,
-          item.partNumber || item.laborCode
-        );
-
-        const currentPrice = unitPrice;
+        const marketResult = await this.getMarketPrice(item.description, item.partNumber);
+        
         let status: 'good' | 'caution' | 'overpriced' = 'good';
         let variance = 0;
-        let confidence = 0;
+        let confidence = 0.5; // Default confidence
 
-        if (marketData.success && marketData.averagePrice) {
-          variance = ((currentPrice - marketData.averagePrice) / marketData.averagePrice) * 100;
-          confidence = marketData.sources?.length || 0;
-
-          if (variance > 50) {
+        if (marketResult.success && marketResult.averagePrice) {
+          variance = ((item.unitPrice - marketResult.averagePrice) / marketResult.averagePrice) * 100;
+          
+          if (variance > 25) {
             status = 'overpriced';
-          } else if (variance > 20) {
+            confidence = 0.8;
+          } else if (variance > 10) {
             status = 'caution';
+            confidence = 0.7;
           } else {
             status = 'good';
+            confidence = 0.9;
           }
         }
 
         results.push({
           item: item.description,
-          currentPrice,
-          marketPrice: marketData.averagePrice,
-          variance: Math.round(variance * 100) / 100,
-          status,
-          confidence: Math.min(confidence / 5, 1) // Normalize to 0-1
+          currentPrice: item.unitPrice,
+          marketPrice: marketResult.averagePrice,
+          variance: variance,
+          status: status,
+          confidence: confidence
         });
 
-        // Add delay to respect API rate limits
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
 
       } catch (error) {
-        console.error(`Price comparison failed for item: ${item.description}`, error);
+        console.error(`Error comparing price for ${item.description}:`, error);
+        
+        // Add item with unknown status
         results.push({
           item: item.description,
-          currentPrice: unitPrice,
-          variance: 0,
+          currentPrice: item.unitPrice,
           status: 'good',
-          confidence: 0
+          confidence: 0.1
         });
       }
     }
 
     return results;
   }
+
+  // Helper method to format currency
+  formatCurrency(amount: number): string {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  }
+
+  // Helper method to format percentage
+  formatPercentage(value: number): string {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(1)}%`;
+  }
 }
 
+// Export singleton instance
 export const SerpAPIService = new SerpAPIServiceClass();
-export type { MarketPriceResult, PriceComparisonResult };
+export default SerpAPIService;

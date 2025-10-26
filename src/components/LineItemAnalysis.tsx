@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useLineItemAnalysis } from '@/hooks/useLineItemAnalysis';
 import type { LineItem } from '@/services/POParser';
-import { ExternalLink, Settings2 } from 'lucide-react';
+import { ExternalLink, Settings2, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import { LaborHoursAnalysis } from './LaborHoursAnalysis';
 
 interface Props {
@@ -31,9 +31,55 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
     variance: true,
     status: true,
     reason: false,
+    furyAiNote: true,
   });
 
   const [showPartsColumnSettings, setShowPartsColumnSettings] = useState(false);
+
+  // Generate Fury AI explanation for each line item
+  const generateFuryAiNote = (row: any) => {
+    const dollarDiff = row.marketAvg !== undefined ? row.unitCost - row.marketAvg : 0;
+    const percentDiff = row.percentDiff || 0;
+    
+    // Determine the icon and status
+    let icon, status, explanation;
+    
+    if (row.status.includes('Rejected')) {
+      icon = <AlertTriangle className="h-4 w-4 text-red-600" />;
+      status = 'REJECTED';
+      if (percentDiff > 50) {
+        explanation = `Price is ${percentDiff.toFixed(1)}% above market average ($${Math.abs(dollarDiff).toFixed(2)} over). This represents excessive markup and should be negotiated or sourced elsewhere.`;
+      } else if (row.quantity > 10) {
+        explanation = `High quantity (${row.quantity}) ordered. Verify this quantity is actually needed to avoid overstocking and unnecessary expense.`;
+      } else {
+        explanation = `Item flagged for review due to pricing concerns. Consider alternative suppliers or negotiate better rates.`;
+      }
+    } else if (row.status.includes('Caution')) {
+      icon = <Info className="h-4 w-4 text-orange-600" />;
+      status = 'CAUTION';
+      if (percentDiff > 15) {
+        explanation = `Price is ${percentDiff.toFixed(1)}% above market average ($${Math.abs(dollarDiff).toFixed(2)} over). Consider negotiating or seeking quotes from alternative suppliers.`;
+      } else if (percentDiff > 5) {
+        explanation = `Slightly above market rate but within acceptable range. Monitor pricing trends for future orders.`;
+      } else {
+        explanation = `Item requires attention due to quantity or other factors. Review necessity and timing of this purchase.`;
+      }
+    } else {
+      icon = <CheckCircle2 className="h-4 w-4 text-green-600" />;
+      status = 'APPROVED';
+      if (percentDiff < -10) {
+        explanation = `Excellent pricing - ${Math.abs(percentDiff).toFixed(1)}% below market average. Great value for this item.`;
+      } else if (percentDiff < 0) {
+        explanation = `Good pricing - ${Math.abs(percentDiff).toFixed(1)}% below market average. Favorable deal secured.`;
+      } else if (percentDiff <= 5) {
+        explanation = `Market-competitive pricing. This is a fair price for the item and vendor relationship.`;
+      } else {
+        explanation = `Standard pricing for this type of item. Cost is reasonable and within expected range.`;
+      }
+    }
+    
+    return { icon, status, explanation };
+  };
 
   if (!lineItems || lineItems.length === 0) return null;
 
@@ -105,6 +151,7 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
                     {partsColumns.variance && <th className="text-left py-2 font-medium text-muted-foreground">Variance</th>}
                     {partsColumns.status && <th className="text-left py-2 font-medium text-muted-foreground">Status</th>}
                     {partsColumns.reason && <th className="text-left py-2 font-medium text-muted-foreground">Reason</th>}
+                    {partsColumns.furyAiNote && <th className="text-left py-2 font-medium text-muted-foreground">Fury AI Note</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -154,6 +201,31 @@ export const LineItemAnalysis: React.FC<Props> = ({ lineItems }) => {
                         {partsColumns.reason && (
                           <td className="py-3 text-left max-w-xs">
                             <span className="text-sm text-muted-foreground">{row.reason}</span>
+                          </td>
+                        )}
+                        {partsColumns.furyAiNote && (
+                          <td className="py-3 text-left max-w-md">
+                            {(() => {
+                              const aiNote = generateFuryAiNote(row);
+                              return (
+                                <div className="flex items-start space-x-2">
+                                  <div className="flex-shrink-0 mt-0.5">
+                                    {aiNote.icon}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className={`text-xs font-medium mb-1 ${
+                                      aiNote.status === 'APPROVED' ? 'text-green-600' :
+                                      aiNote.status === 'CAUTION' ? 'text-orange-600' : 'text-red-600'
+                                    }`}>
+                                      {aiNote.status}
+                                    </div>
+                                    <div className="text-xs text-gray-700 leading-relaxed">
+                                      {aiNote.explanation}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                         )}
                       </tr>

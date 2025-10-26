@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,18 +21,57 @@ import {
 import { LocalStorageService, type StoredPO } from '@/services/LocalStorageService';
 import { LineItemAnalysis } from '@/components/LineItemAnalysis';
 import { LaborHoursAnalysis } from '@/components/LaborHoursAnalysis';
+import { VehicleChecks } from '@/components/VehicleChecks';
 import { useLineItemAnalysis } from '@/hooks/useLineItemAnalysis';
 import { AIAnalysisPopup } from '@/components/AIAnalysisPopup';
+import { VehicleCheckService, type VehicleCheck } from '@/services/VehicleCheckService';
 
 export const PODetail = () => {
   const { id } = useParams<{ id: string }>();
   const [poData, setPOData] = useState<StoredPO | null>(null);
   const [showAnalysisPopup, setShowAnalysisPopup] = useState(false);
+  const [vehicleCheck, setVehicleCheck] = useState<VehicleCheck | null>(null);
+  const [vehicleCheckLoading, setVehicleCheckLoading] = useState(false);
+  const [vehicleCheckError, setVehicleCheckError] = useState<string | undefined>();
   const { toast } = useToast();
   
-  // Get real analysis data from the hook
+  // Helper function to check if an item is a tax item
+  const isTaxItem = useCallback((item: any) => {
+    const description = item.description?.toLowerCase() || '';
+    return description.includes('tax') || description.includes('sales tax');
+  }, []);
+
+  // Helper function to separate tax items from regular items
+  const separateLineItems = useCallback((lineItems: any[] = []) => {
+    const regularItems = lineItems.filter(item => !isTaxItem(item));
+    const taxItems = lineItems.filter(item => isTaxItem(item));
+    return { regularItems, taxItems };
+  }, [isTaxItem]);
+
+  // Calculate totals
+  const calculateTotals = useCallback((lineItems: any[] = []) => {
+    const { regularItems, taxItems } = separateLineItems(lineItems);
+    
+    const subtotal = regularItems.reduce((sum, item) => {
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
+    
+    const taxAmount = taxItems.reduce((sum, item) => {
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
+    
+    const total = subtotal + taxAmount;
+    
+    return { subtotal, taxAmount, total, regularItems, taxItems };
+  }, [separateLineItems]);
+  
+  // Get real analysis data from the hook - use only regular items for analysis
+  const { regularItems } = poData?.extractedData?.lineItems 
+    ? separateLineItems(poData.extractedData.lineItems)
+    : { regularItems: [] };
+    
   const { summary: analysisData, rows: analysisRows } = useLineItemAnalysis(
-    poData?.extractedData?.lineItems || [],
+    regularItems || [],
     { excessiveQtyThreshold: 20 }
   );
 
@@ -44,6 +83,44 @@ export const PODetail = () => {
       }
     }
   }, [id]);
+
+  // Perform vehicle checks when PO data is loaded
+  useEffect(() => {
+    if (poData?.extractedData?.vehicleNumber) {
+      const performVehicleCheck = async () => {
+        setVehicleCheckLoading(true);
+        setVehicleCheckError(undefined);
+        
+        try {
+          // Calculate total PO amount using new calculation method
+          const { total: totalAmount } = calculateTotals(poData.extractedData?.lineItems || []);
+
+          console.log(`🚗 Performing vehicle check for ${poData.extractedData.vehicleNumber} with PO amount $${totalAmount}`);
+          
+          const result = await VehicleCheckService.checkVehicle(
+            poData.extractedData.vehicleNumber,
+            totalAmount
+          );
+
+          if (result.success && result.data) {
+            setVehicleCheck(result.data);
+            console.log('✅ Vehicle check completed successfully');
+          } else {
+            setVehicleCheckError(result.error || 'Vehicle check failed');
+            console.error('❌ Vehicle check failed:', result.error);
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Vehicle check failed';
+          setVehicleCheckError(errorMessage);
+          console.error('❌ Vehicle check error:', error);
+        } finally {
+          setVehicleCheckLoading(false);
+        }
+      };
+
+      performVehicleCheck();
+    }
+  }, [poData, calculateTotals]);
 
   // Automatically make decision based on analysis results
   useEffect(() => {
@@ -216,7 +293,17 @@ const getStatusBadge = (status: string) => {
         yPos += 8;
         doc.setFontSize(12);
         doc.setTextColor(0, 102, 204);
+        doc.text(`Subtotal: $${subtotal.toFixed(2)}`, 20, yPos);
+        
+        if (taxAmount > 0) {
+          yPos += 8;
+          doc.text(`Tax: $${taxAmount.toFixed(2)}`, 20, yPos);
+        }
+        
+        yPos += 8;
+        doc.setFont('helvetica', 'bold');
         doc.text(`Total Amount: $${totalAmount.toFixed(2)}`, 20, yPos);
+        doc.setFont('helvetica', 'normal');
         
         // Line Items
         yPos += 20;
@@ -239,9 +326,9 @@ const getStatusBadge = (status: string) => {
         doc.line(20, yPos + 2, 190, yPos + 2);
         yPos += 8;
         
-        // Line items data
-        const lineItems = poData.extractedData?.lineItems || [];
-        lineItems.forEach((item: any, index: number) => {
+        // Line items data (excluding tax items)
+        const { regularItems: pdfLineItems } = separateLineItems(poData.extractedData?.lineItems || []);
+        pdfLineItems.forEach((item: any, index: number) => {
           if (yPos > 270) { // Check if we need a new page
             doc.addPage();
             yPos = 30;
@@ -322,7 +409,11 @@ const getStatusBadge = (status: string) => {
 
   // Use real analysis data for calculations
   const totalFlagged = analysisData ? (analysisData.caution + analysisData.rejected) : 0;
-  const totalAmount = analysisData?.totalBill || poData.total || 0;
+  
+  // Calculate totals using the new method
+  const { subtotal, taxAmount, total } = calculateTotals(poData.extractedData?.lineItems || []);
+  const totalAmount = total;
+  
   const marketTotal = analysisData?.totalMarketAvg || 0;
   const potentialOverage = Math.max(0, totalAmount - marketTotal);
   const marketSavings = Math.max(0, marketTotal - totalAmount);
@@ -398,15 +489,34 @@ const getStatusBadge = (status: string) => {
                     <p className="text-base font-mono">{poData.extractedData.vehicle.vin}</p>
                   </div>
                 )}
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Total Amount</label>
-                  <p className="text-xl font-bold text-primary">${totalAmount.toFixed(2)}</p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Subtotal</label>
+                    <p className="text-lg font-semibold">${subtotal.toFixed(2)}</p>
+                  </div>
+                  {taxAmount > 0 && (
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Tax</label>
+                      <p className="text-lg font-semibold">${taxAmount.toFixed(2)}</p>
+                    </div>
+                  )}
+                  <div className="border-t pt-2">
+                    <label className="text-sm font-medium text-muted-foreground">Total Amount</label>
+                    <p className="text-xl font-bold text-primary">${totalAmount.toFixed(2)}</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Vehicle Checks */}
+      <VehicleChecks 
+        vehicleCheck={vehicleCheck}
+        isLoading={vehicleCheckLoading}
+        error={vehicleCheckError}
+      />
 
       {/* AI Analysis Summary */}
       <Card className="p-6">
@@ -460,7 +570,7 @@ const getStatusBadge = (status: string) => {
       </Card>
 
       {/* Analysis Tables */}
-      <LineItemAnalysis lineItems={poData.extractedData?.lineItems || []} />
+      <LineItemAnalysis lineItems={regularItems} />
 
       {/* Analysis Summary Stats */}
       <Card className="p-6">

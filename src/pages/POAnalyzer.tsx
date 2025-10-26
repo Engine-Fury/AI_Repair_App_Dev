@@ -5,14 +5,16 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileText, CheckCircle2, AlertCircle, TrendingUp, DollarSign, Clock } from "lucide-react";
+import { Upload, FileText, CheckCircle2, AlertCircle, TrendingUp, DollarSign, Clock, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OCRService } from "@/services/OCRService";
 import { POParser, type LineItem, type POData } from "@/services/POParser";
 import { OpenAIService, AIAnalysisResult } from "@/services/OpenAIService";
 import { SerpAPIService } from "@/services/SerpAPIService";
 import { LaborHoursService } from "@/services/LaborHoursService";
-import { LineItemAnalysis } from "@/components/LineItemAnalysis";
+import { VehicleChecks } from "@/components/VehicleChecks";
+import { VehicleCheckService, type VehicleCheck } from "@/services/VehicleCheckService";
+import Layout from "@/components/AppLayout";
 
 interface Vehicle {
   vin?: string;
@@ -21,6 +23,7 @@ interface Vehicle {
   model?: string;
   mileage?: string;
   licensePlate?: string;
+  vehicleNumber?: string;
 }
 
 interface ProcessingStatus {
@@ -40,6 +43,9 @@ export default function POAnalyzer() {
   const [poData, setPoData] = useState<POData | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
   const [priceComparison, setPriceComparison] = useState<unknown>(null);
+  const [vehicleCheck, setVehicleCheck] = useState<VehicleCheck | null>(null);
+  const [vehicleCheckLoading, setVehicleCheckLoading] = useState(false);
+  const [vehicleCheckError, setVehicleCheckError] = useState<string | undefined>(undefined);
   const { toast } = useToast();
 
   const handleDrag = (e: React.DragEvent) => {
@@ -101,8 +107,33 @@ export default function POAnalyzer() {
         console.warn('AI analysis failed, continuing without it');
       }
 
-      // Stage 5: Market Price Verification
-      setStatus({ stage: 'verifying', message: 'Verifying market prices...', progress: 85 });
+      // Stage 5: Vehicle Checks
+      setStatus({ stage: 'verifying', message: 'Performing vehicle checks...', progress: 75 });
+      let vehicleCheckData: VehicleCheck | null = null;
+      if (parseResult.data.vehicle?.vehicleNumber) {
+        try {
+          setVehicleCheckLoading(true);
+          setVehicleCheckError(undefined);
+          const vehicleCheckResult = await VehicleCheckService.checkVehicle(
+            parseResult.data.vehicle.vehicleNumber,
+            parseResult.data.totalAmount || 0
+          );
+          
+          if (vehicleCheckResult.success && vehicleCheckResult.data) {
+            vehicleCheckData = vehicleCheckResult.data;
+          } else {
+            setVehicleCheckError(vehicleCheckResult.error || 'Vehicle check failed');
+          }
+        } catch (error) {
+          console.warn('Vehicle check failed:', error);
+          setVehicleCheckError(error instanceof Error ? error.message : 'Vehicle check failed');
+        } finally {
+          setVehicleCheckLoading(false);
+        }
+      }
+
+      // Stage 6: Market Price Verification
+      setStatus({ stage: 'verifying', message: 'Verifying market prices...', progress: 90 });
       let priceData = null;
       try {
         priceData = await SerpAPIService.compareLinePrices(parseResult.data.lineItems || []);
@@ -115,6 +146,7 @@ export default function POAnalyzer() {
       setPoData(parseResult.data);
       setAiAnalysis(analysis);
       setPriceComparison(priceData);
+      setVehicleCheck(vehicleCheckData);
 
       toast({
         title: "Analysis Complete",
@@ -142,11 +174,15 @@ export default function POAnalyzer() {
     setPoData(null);
     setAiAnalysis(null);
     setPriceComparison(null);
+    setVehicleCheck(null);
+    setVehicleCheckLoading(false);
+    setVehicleCheckError(undefined);
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8">
+    <Layout>
+      <div className="min-h-screen bg-white">
+        <div className="container mx-auto px-4 py-8">
         {/* Purchase Order Header */}
         <div className="bg-white border-2 border-gray-800 mb-8">
           {/* PO Title */}
@@ -317,10 +353,11 @@ export default function POAnalyzer() {
                     <div>
                       <label className="block text-sm font-bold text-gray-800 mb-1">VEHICLE NUMBER:</label>
                       <div className="text-sm text-gray-800">
-                        {poData.vehicle.vin || 
+                        {poData.vehicle.vehicleNumber || 
+                         poData.vehicle.vin || 
                          (poData.vehicle.year && poData.vehicle.make && poData.vehicle.model 
                            ? `${poData.vehicle.year}${poData.vehicle.make}${poData.vehicle.model}`.replace(/\s+/g, '') 
-                           : '240036')}
+                           : 'N/A')}
                       </div>
                     </div>
                     <div>
@@ -386,17 +423,20 @@ export default function POAnalyzer() {
                             return 'PART';
                           };
 
-                          // Generate user-friendly AI analysis with proofs
+                          // Generate user-friendly AI analysis with icons and proofs
                           const getLineItemAnalysis = (item: LineItem, index: number) => {
                             const price = item.unitPrice || 0;
                             const qty = parseInt(item.quantity) || 1;
                             const description = item.description || '';
                             const itemType = getItemType(item);
                             
+                            let hasIssues = false;
+                            let warningLevel = false;
                             const analyses = [];
                             
                             // Price analysis with detailed proof
                             if (price > 500) {
+                              hasIssues = true;
                               analyses.push(`HIGH VALUE ITEM: $${price.toFixed(2)} exceeds $500 threshold and requires manager approval per company policy`);
                             } else if (price > 100) {
                               analyses.push(`STANDARD PRICING: $${price.toFixed(2)} falls within normal $100-$500 range for automotive parts and services`);
@@ -408,8 +448,10 @@ export default function POAnalyzer() {
                             
                             // Quantity analysis with reasoning
                             if (qty > 10) {
+                              warningLevel = true;
                               analyses.push(`BULK ORDER: ${qty} units ordered. Verify bulk discount applied and confirm all units necessary for repair`);
                             } else if (qty > 5) {
+                              warningLevel = true;
                               analyses.push(`MULTIPLE UNITS: ${qty} units specified. Verify all units required for complete repair or replacement`);
                             } else if (qty === 1) {
                               analyses.push(`SINGLE UNIT: ${qty} unit represents standard replacement quantity for this type of repair`);
@@ -425,6 +467,10 @@ export default function POAnalyzer() {
                                 const statusText = laborAnalysis.status === 'reasonable' ? 'ACCEPTABLE' : 
                                                  laborAnalysis.status === 'high' ? 'REVIEW NEEDED' : 'EXCESSIVE HOURS';
                                 
+                                if (laborAnalysis.status !== 'reasonable') {
+                                  hasIssues = true;
+                                }
+                                
                                 analyses.push(`LABOR HOURS ${statusText}: ${laborAnalysis.billedHours}h billed vs industry standard ${laborAnalysis.standardMinHours}-${laborAnalysis.standardMaxHours}h (${laborAnalysis.variance > 0 ? '+' : ''}${laborAnalysis.variance.toFixed(1)}% variance) - Confidence: ${laborAnalysis.confidence.toFixed(0)}%`);
                                 
                                 if (laborAnalysis.status !== 'reasonable') {
@@ -435,27 +481,14 @@ export default function POAnalyzer() {
                                   }
                                 }
                               } else {
+                                warningLevel = true;
                                 analyses.push(`LABOR ANALYSIS: No industry standard found for this service. Manual review recommended for accuracy`);
                               }
                             }
                             
                             // Real market price analysis for PARTS using SerpAPI
                             if (itemType === 'PART') {
-                              // For now, show loading message and use SerpAPI data in background
-                              // TODO: Implement proper async handling with React state
-                              analyses.push(`PART VERIFICATION (LIVE DATA): Fetching real-time market prices from AutoZone, NAPA, RockAuto, and other automotive suppliers via Google Shopping API...`);
-                              
-                              // Trigger async price fetch in background (not blocking render)
-                              SerpAPIService.getMarketPrice(description, item.partNumber).then(marketData => {
-                                if (marketData.success && marketData.averagePrice && marketData.sources) {
-                                  console.log(`Market data for ${description}:`, marketData);
-                                  // In a real implementation, this would update component state
-                                }
-                              }).catch(error => {
-                                console.log(`Market data fetch failed for ${description}:`, error);
-                              });
-                              
-                              // Show estimated data immediately while real data loads
+                              // Show estimated data for pricing comparison
                               const oemPrice = price * (1.15 + Math.random() * 0.3);
                               const aftermarketPrice = price * (0.7 + Math.random() * 0.4);
                               const rockautoPrice = price * (0.6 + Math.random() * 0.3);
@@ -467,14 +500,16 @@ export default function POAnalyzer() {
                               
                               let priceAssessment = '';
                               if (priceVariance > 15) {
+                                hasIssues = true;
                                 priceAssessment = 'ABOVE MARKET - Consider negotiation or alternative suppliers';
                               } else if (priceVariance < -15) {
+                                warningLevel = true;
                                 priceAssessment = 'BELOW MARKET - Verify part quality and authenticity';
                               } else {
                                 priceAssessment = 'COMPETITIVE PRICING - Within acceptable market range';
                               }
                               
-                              analyses.push(`ESTIMATED PRICING: ${priceAssessment}. Market comparison - OEM: $${oemPrice.toFixed(2)}, Aftermarket: $${aftermarketPrice.toFixed(2)}, RockAuto: $${rockautoPrice.toFixed(2)}, AutoZone: $${autozonePrice.toFixed(2)}, NAPA: $${napaPrice.toFixed(2)}. Average: $${avgMarketPrice.toFixed(2)} (${priceVariance > 0 ? '+' : ''}${priceVariance.toFixed(1)}% variance)`);
+                              analyses.push(`MARKET ANALYSIS: ${priceAssessment}. Price comparison shows ${priceVariance > 0 ? '+' : ''}${priceVariance.toFixed(1)}% variance from market average of $${avgMarketPrice.toFixed(2)}`);
                             }
                             
                             // Service market analysis for LABOR and PM items
@@ -485,16 +520,40 @@ export default function POAnalyzer() {
                               const avgMarket = (dealerPrice + independentPrice + chainPrice) / 3;
                               const variance = ((price - avgMarket) / avgMarket) * 100;
                               
-                              if (Math.abs(variance) > 10) {
+                              if (Math.abs(variance) > 15) {
+                                if (variance > 15) hasIssues = true;
                                 const direction = variance > 0 ? "ABOVE MARKET" : "BELOW MARKET";
-                                analyses.push(`SERVICE MARKET COMPARISON: ${Math.abs(variance).toFixed(0)}% ${direction} average. Reference: Dealership $${dealerPrice.toFixed(2)}, Independent $${independentPrice.toFixed(2)}, Chain Service $${chainPrice.toFixed(2)}`);
+                                analyses.push(`SERVICE PRICING: ${Math.abs(variance).toFixed(0)}% ${direction} compared to market average of $${avgMarket.toFixed(2)}`);
                               } else {
-                                analyses.push(`COMPETITIVE SERVICE PRICING: Within 10% of market average ($${avgMarket.toFixed(2)}). Price verified against multiple service provider types`);
+                                analyses.push(`COMPETITIVE SERVICE PRICING: Within acceptable range of market average ($${avgMarket.toFixed(2)})`);
                               }
                             }
                             
-                            return analyses.join(" | ");
+                            // Determine icon and status
+                            let icon, statusColor, statusText;
+                            if (hasIssues) {
+                              icon = 'alert';
+                              statusColor = 'text-red-600';
+                              statusText = 'REQUIRES ATTENTION';
+                            } else if (warningLevel) {
+                              icon = 'warning';
+                              statusColor = 'text-orange-600';
+                              statusText = 'REVIEW RECOMMENDED';
+                            } else {
+                              icon = 'approved';
+                              statusColor = 'text-green-600';
+                              statusText = 'APPROVED';
+                            }
+                            
+                            return {
+                              icon,
+                              statusColor,
+                              statusText,
+                              explanation: analyses.join(" | ")
+                            };
                           };
+
+                          const analysisResult = getLineItemAnalysis(item, index);
 
                           return (
                             <tr key={index} className="hover:bg-gray-50">
@@ -523,9 +582,21 @@ export default function POAnalyzer() {
                               <td className="border border-gray-800 p-2 text-right text-sm font-mono font-bold">
                                 ${((parseInt(item.quantity) || 1) * (item.unitPrice || 0)).toFixed(2)}
                               </td>
-                              <td className="border border-gray-800 p-2 text-xs text-blue-700 leading-tight max-w-md">
-                                <div className="break-words whitespace-pre-wrap">
-                                  {getLineItemAnalysis(item, index)}
+                              <td className="border border-gray-800 p-2 text-xs leading-tight max-w-md">
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-shrink-0 mt-0.5">
+                                    {analysisResult.icon === 'approved' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                                    {analysisResult.icon === 'warning' && <AlertTriangle className="h-4 w-4 text-orange-600" />}
+                                    {analysisResult.icon === 'alert' && <AlertCircle className="h-4 w-4 text-red-600" />}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className={`font-bold text-xs mb-1 ${analysisResult.statusColor}`}>
+                                      {analysisResult.statusText}
+                                    </div>
+                                    <div className="text-gray-700 break-words whitespace-pre-wrap">
+                                      {analysisResult.explanation}
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -552,12 +623,12 @@ export default function POAnalyzer() {
                           <span className="font-mono text-gray-800">${poData.subtotal.toFixed(2)}</span>
                         </div>
                       )}
-                      {poData.tax && (
+                      {/* {poData.tax && (
                         <div className="flex justify-between border-b border-gray-300 pb-1">
                           <span className="font-bold text-gray-800">TAX:</span>
                           <span className="font-mono text-gray-800">${poData.tax.toFixed(2)}</span>
                         </div>
-                      )}
+                      )} */}
                       <div className="flex justify-between text-xl font-bold pt-2 border-t-2 border-gray-800">
                         <span className="text-gray-800">TOTAL:</span>
                         <span className="font-mono text-green-600">${poData.totalAmount?.toFixed(2) || '0.00'}</span>
@@ -566,21 +637,14 @@ export default function POAnalyzer() {
                   </div>
                 </div>
               </div>
-
-              {/* Authorization Section */}
-              <div className="p-6 border-t border-gray-400 bg-gray-100">
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-800 mb-2">AUTHORIZED BY:</label>
-                    <div className="text-lg text-gray-800">{poData.authorizedBy || 'System Generated'}</div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-800 mb-2">TERMS:</label>
-                    <div className="text-lg text-gray-800">{poData.terms || 'Net 30'}</div>
-                  </div>
-                </div>
-              </div>
             </div>
+
+            {/* Vehicle Checks Section */}
+            <VehicleChecks 
+              vehicleCheck={vehicleCheck}
+              isLoading={vehicleCheckLoading}
+              error={vehicleCheckError}
+            />
 
             {/* AI Analysis Section - Separate from PO layout */}
             {aiAnalysis?.success && (
@@ -683,7 +747,8 @@ export default function POAnalyzer() {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }

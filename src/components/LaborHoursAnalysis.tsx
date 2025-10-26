@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { LaborAnalysisResult } from '../services/LaborHoursService';
+import { CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 
 interface Props {
   laborAnalysis: LaborAnalysisResult[];
@@ -49,6 +50,38 @@ export const LaborHoursAnalysis: React.FC<Props> = ({ laborAnalysis, loading }) 
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
+  };
+
+  // Generate Fury AI explanation for labor items
+  const generateLaborFuryAiNote = (item: LaborAnalysisResult) => {
+    let icon, status, explanation;
+    
+    if (item.status === 'excessive') {
+      icon = <AlertTriangle className="h-4 w-4 text-red-600" />;
+      status = 'REJECTED';
+      explanation = `Labor hours are ${item.variance.toFixed(1)}% above standard range (${item.standardMinHours.toFixed(1)}-${item.standardMaxHours.toFixed(1)}h). This indicates potential overcharging or inefficient work. Request detailed breakdown and justification.`;
+    } else if (item.status === 'high') {
+      icon = <Info className="h-4 w-4 text-orange-600" />;
+      status = 'CAUTION';
+      explanation = `Labor hours are ${item.variance.toFixed(1)}% above standard but may be acceptable for complex repairs. Verify if additional work or complications justify the extra time.`;
+    } else {
+      icon = <CheckCircle2 className="h-4 w-4 text-green-600" />;
+      status = 'APPROVED';
+      if (item.variance < -10) {
+        explanation = `Excellent labor efficiency - ${Math.abs(item.variance).toFixed(1)}% below standard time. This represents good value and skilled technician work.`;
+      } else if (item.variance < 0) {
+        explanation = `Labor time is ${Math.abs(item.variance).toFixed(1)}% below standard range, indicating efficient work completion.`;
+      } else {
+        explanation = `Labor hours are within acceptable standard range (${item.standardMinHours.toFixed(1)}-${item.standardMaxHours.toFixed(1)}h). Time allocation appears appropriate for this repair.`;
+      }
+    }
+    
+    // Add confidence considerations
+    if (item.confidence < 70) {
+      explanation += ` Note: Low matching confidence (${item.confidence.toFixed(0)}%) - manual verification recommended.`;
+    }
+    
+    return { icon, status, explanation };
   };
 
   const totalBilledHours = laborAnalysis.reduce((sum, item) => sum + item.billedHours, 0);
@@ -106,6 +139,7 @@ export const LaborHoursAnalysis: React.FC<Props> = ({ laborAnalysis, loading }) 
                 <th className="text-center p-3 font-medium">Status</th>
                 <th className="text-center p-3 font-medium">Confidence</th>
                 <th className="text-center p-3 font-medium">VMRS Code</th>
+                <th className="text-left p-3 font-medium">Fury AI Note</th>
               </tr>
             </thead>
             <tbody>
@@ -135,6 +169,29 @@ export const LaborHoursAnalysis: React.FC<Props> = ({ laborAnalysis, loading }) 
                   </td>
                   <td className="p-3 text-center font-mono text-xs text-muted-foreground">
                     {item.vmrsCode}
+                  </td>
+                  <td className="p-3 text-left max-w-md">
+                    {(() => {
+                      const aiNote = generateLaborFuryAiNote(item);
+                      return (
+                        <div className="flex items-start space-x-2">
+                          <div className="flex-shrink-0 mt-0.5">
+                            {aiNote.icon}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className={`text-xs font-medium mb-1 ${
+                              aiNote.status === 'APPROVED' ? 'text-green-600' :
+                              aiNote.status === 'CAUTION' ? 'text-orange-600' : 'text-red-600'
+                            }`}>
+                              {aiNote.status}
+                            </div>
+                            <div className="text-xs text-gray-700 leading-relaxed">
+                              {aiNote.explanation}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
