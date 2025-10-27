@@ -1,3 +1,5 @@
+import { VehicleWarrantyStatus, WarrantyService } from './WarrantyService';
+
 export interface VehicleCheck {
   vehicleNumber: string;
   capCost: number;
@@ -7,6 +9,7 @@ export interface VehicleCheck {
   assignedCycle: string;
   scheduledForReplacement: boolean;
   replacementJustification: string;
+  warrantyStatus?: VehicleWarrantyStatus;
   vehicleDetails: {
     vin: string;
     make: string;
@@ -43,7 +46,15 @@ export class VehicleCheckService {
 
       const result = await response.json() as VehicleCheckResult;
       
-      if (response.ok) {
+      if (response.ok && result.data) {
+        // Always add warranty status information for display purposes
+        const vehicleAge = new Date().getFullYear() - result.data.vehicleDetails.year;
+        result.data.warrantyStatus = WarrantyService.checkVehicleWarranty(
+          result.data.vehicleDetails.year,
+          result.data.vehicleDetails.mileage
+          // TODO: Add replacement history from maintenance records
+        );
+        
         console.log(`✅ Vehicle check successful for ${vehicleNumber}`);
         return result;
       } else {

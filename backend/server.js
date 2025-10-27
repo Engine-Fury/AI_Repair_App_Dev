@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 3001;
 // Configure CORS to allow specific frontend origins
 app.use(cors({
   origin: [
+    'http://localhost:8080',
     'http://localhost:8081',
     'http://localhost:3000',
     'http://localhost:5173',

@@ -2,8 +2,9 @@ import React from 'react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, CheckCircle2, DollarSign, Calendar } from "lucide-react";
+import { AlertTriangle, CheckCircle2, DollarSign, Calendar, Shield, Clock } from "lucide-react";
 import { VehicleCheck, VehicleCheckService } from "@/services/VehicleCheckService";
+import { WarrantyService } from "@/services/WarrantyService";
 
 interface VehicleChecksProps {
   vehicleCheck: VehicleCheck | null;
@@ -188,12 +189,182 @@ export const VehicleChecks: React.FC<VehicleChecksProps> = ({
           </Card>
         </div>
 
+        {/* Warranty Checks - Show for all vehicles */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <Shield className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Warranty Coverage Analysis</h3>
+            <Badge variant="outline" className="ml-2">
+              {new Date().getFullYear() - vehicleCheck.vehicleDetails.year} year{(new Date().getFullYear() - vehicleCheck.vehicleDetails.year) !== 1 ? 's' : ''} old
+            </Badge>
+          </div>
+
+          {/* Check if vehicle is eligible for warranty checks */}
+          {(new Date().getFullYear() - vehicleCheck.vehicleDetails.year) >= 5 ? (
+            /* Vehicle not eligible for warranty */
+            <Card className="border-2 border-green-500 bg-green-50">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg text-green-800">
+                  <Shield className="h-5 w-5 text-green-600" />
+                  Vehicle Not Under Warranty Coverage
+                </CardTitle>
+                <CardDescription className="text-green-700">
+                  Warranty checks only apply to vehicles less than 5 years old
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Alert className="border-green-500 bg-green-100">
+                    <Shield className="h-4 w-4 text-green-600" />
+                    <AlertDescription className="text-green-800">
+                      <strong>📋 WARRANTY STATUS:</strong> This vehicle is {new Date().getFullYear() - vehicleCheck.vehicleDetails.year} years old and is not eligible for manufacturer warranty coverage. 
+                      Standard repair procedures apply without warranty considerations.
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-green-100 rounded-lg border border-green-400">
+                    <div>
+                      <label className="block text-sm font-bold text-green-700">VEHICLE AGE</label>
+                      <div className="text-lg font-bold text-green-900">
+                        {new Date().getFullYear() - vehicleCheck.vehicleDetails.year} years
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-green-700">WARRANTY STATUS</label>
+                      <div className="text-lg font-bold text-green-900">
+                        Not Applicable
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-green-700">COVERAGE</label>
+                      <div className="text-lg font-bold text-green-900">
+                        None Expected
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            /* Vehicle eligible for warranty - show warranty analysis */
+            vehicleCheck.warrantyStatus && (
+              <>
+                {/* Warranty Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800">ACTIVE WARRANTIES</label>
+                    <div className="text-lg font-bold text-blue-900">
+                      {vehicleCheck.warrantyStatus.applicableWarranties.filter(w => w.isUnderWarranty).length}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-orange-800">FLAGGED ITEMS</label>
+                    <div className="text-lg font-bold text-orange-900">
+                      {vehicleCheck.warrantyStatus.flaggedItems.length}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-600">TOTAL COVERAGE</label>
+                    <div className="text-lg font-bold text-gray-800">
+                      {vehicleCheck.warrantyStatus.applicableWarranties.length} items
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flagged Warranty Items */}
+                {vehicleCheck.warrantyStatus.flaggedItems.length > 0 && (
+                  <Card className="border-2 border-red-500 bg-red-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg text-red-800">
+                        <AlertTriangle className="h-5 w-5 text-red-600" />
+                        Warranty Redline Flags
+                      </CardTitle>
+                      <CardDescription className="text-red-700">
+                        Parts that may still be under warranty coverage
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {vehicleCheck.warrantyStatus.flaggedItems.map((item, index) => (
+                          <div key={index} className="p-3 bg-white rounded border border-red-200">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="font-semibold text-red-900">{item.partName}</span>
+                              <Badge variant="destructive" className="text-xs">
+                                FLAGGED
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-red-800 mb-1">
+                              <strong>Reason:</strong> {item.redlineReason}
+                            </div>
+                            <div className="text-xs text-red-600">
+                              <strong>Coverage:</strong> {item.warrantyCoverage}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Active Warranties */}
+                {vehicleCheck.warrantyStatus.hasActiveWarranties && (
+                  <Card className="border-2 border-green-500 bg-green-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg text-green-800">
+                        <Shield className="h-5 w-5 text-green-600" />
+                        Active Warranty Coverage
+                      </CardTitle>
+                      <CardDescription className="text-green-700">
+                        Parts currently under warranty
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {vehicleCheck.warrantyStatus.applicableWarranties
+                          .filter(w => w.isUnderWarranty)
+                          .map((item, index) => (
+                            <div key={index} className="p-3 bg-white rounded border border-green-200">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="font-semibold text-green-900">{item.partName}</span>
+                                <Badge variant="default" className="text-xs bg-green-600">
+                                  COVERED
+                                </Badge>
+                              </div>
+                              <div className="text-sm text-green-800 mb-1">
+                                <strong>Coverage:</strong> {item.warrantyCoverage}
+                              </div>
+                              <div className="text-xs text-green-600 flex items-center gap-2">
+                                <Clock className="h-3 w-3" />
+                                {WarrantyService.formatWarrantyCoverage(item)}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )
+          )}
+        </div>
+
         {/* Summary Alert */}
-        {(vehicleCheck.exceedsCapCostThreshold || vehicleCheck.scheduledForReplacement) && (
+        {(vehicleCheck.exceedsCapCostThreshold || 
+          vehicleCheck.scheduledForReplacement || 
+          (vehicleCheck.warrantyStatus && 
+           vehicleCheck.warrantyStatus.vehicleAge < 5 && 
+           vehicleCheck.warrantyStatus.flaggedItems.length > 0)) && (
           <Alert variant="destructive" className="border-2">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
               <strong>⚠️ ATTENTION REQUIRED:</strong> This vehicle has one or more flags that require review before approving additional repair costs.
+              {vehicleCheck.warrantyStatus && 
+               vehicleCheck.warrantyStatus.vehicleAge < 5 && 
+               vehicleCheck.warrantyStatus.flaggedItems.length > 0 && (
+                <div className="mt-2 text-sm">
+                  <strong>Warranty Alert:</strong> {vehicleCheck.warrantyStatus.flaggedItems.length} part(s) may still be under warranty coverage.
+                </div>
+              )}
             </AlertDescription>
           </Alert>
         )}

@@ -38,7 +38,7 @@ class SnowflakeServiceClass {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = 'http://localhost:3001';
+    this.baseUrl = 'http://localhost:3002';
   }
 
   async analyzeRepairCost(identifier: string, tenantId: string, currentPOAmount: number): Promise<RepairCostAnalysis> {

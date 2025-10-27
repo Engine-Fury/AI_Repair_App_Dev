@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Layout } from '@/components/Layout';
 import { useToast } from '@/components/ui/use-toast';
+import { WarrantyDemo } from '@/components/WarrantyDemo';
 import { 
   Settings as SettingsIcon,
   Users,
@@ -299,6 +300,15 @@ const Settings = () => {
                 </div>
               ))}
             </div>
+          </Card>
+
+          {/* Warranty System Demo */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Shield className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Warranty System Testing</h2>
+            </div>
+            <WarrantyDemo />
           </Card>
         </div>
       </div>
