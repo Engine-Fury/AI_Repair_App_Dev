@@ -187,7 +187,7 @@ export default function POAnalyzer() {
         <div className="bg-white border-2 border-gray-800 mb-8">
           {/* PO Title */}
           <div className="bg-gray-100 p-4 border-b-2 border-gray-800">
-            <h2 className="text-3xl font-bold text-center text-gray-800">AI REDLINING</h2>
+            <h2 className="text-3xl font-bold text-center text-gray-800">PO AI Assistant</h2>
           </div>
         </div>
 
@@ -203,7 +203,7 @@ export default function POAnalyzer() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-800 mb-1">DATE:</label>
-                  <div className="border-b border-gray-400 h-6">{new Date().toLocaleDateString()}</div>
+                  <div className="border-b border-gray-400 h-6"></div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-800 mb-1">PAGE:</label>
@@ -324,7 +324,7 @@ export default function POAnalyzer() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-800 mb-1">DATE:</label>
-                    <div className="text-lg font-bold text-gray-800">{poData.date || new Date().toLocaleDateString()}</div>
+                    <div className="text-lg font-bold text-gray-800">{poData.date || ''}</div>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-800 mb-1">TOTAL AMOUNT:</label>

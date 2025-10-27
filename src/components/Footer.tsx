@@ -74,7 +74,7 @@ const Footer = () => {
                 <a href="#" className="text-gray-300 hover:text-white transition-colors duration-200 text-sm group">
                   <div className="flex items-center space-x-2">
                     <ArrowRight className="h-3 w-3 text-[#2c5aa0] group-hover:translate-x-1 transition-transform" />
-                    <span>AI Redlining</span>
+                    <span>PO AI Assistant</span>
                   </div>
                   <div className="text-xs text-gray-400 ml-5 mt-1">Smart PO analysis & validation</div>
                 </a>
