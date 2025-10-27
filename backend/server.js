@@ -17,7 +17,8 @@ app.use(cors({
     'http://localhost:8081',
     'http://localhost:3000',
     'http://localhost:5173',
-    'https://repairai.withfury.ai'
+    'https://repairai.withfury.ai',
+    '*'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

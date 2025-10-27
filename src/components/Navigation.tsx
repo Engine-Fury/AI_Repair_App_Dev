@@ -17,10 +17,11 @@ const Navigation = () => {
               rel="noopener noreferrer" 
               className="flex items-center space-x-3"
             >
-              <div className="flex flex-col items-center">
-                <span className="text-2xl font-black text-[#2c5aa0]">FURY</span>
-                <span className="text-xs font-bold text-[#2c5aa0] tracking-wider">—DAMN THE ODDS</span>
-              </div>
+              <img 
+                src="https://www.withfury.ai/fury.webp" 
+                alt="FURY Logo" 
+                className="h-16 w-auto"
+              />
             </a>
           </div>
 

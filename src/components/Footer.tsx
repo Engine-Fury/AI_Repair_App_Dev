@@ -12,10 +12,11 @@ const Footer = () => {
           {/* Company Info */}
           <div className="lg:col-span-1">
             <div className="flex flex-col items-start mb-6">
-              <div className="flex flex-col">
-                <span className="text-2xl font-black text-white">FURY</span>
-                <span className="text-xs font-bold text-gray-300 tracking-wider">—DAMN THE ODDS</span>
-              </div>
+              <img 
+                src="https://www.withfury.ai/fury.webp" 
+                alt="FURY Logo" 
+                className="h-20 w-auto"
+              />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed mb-6">
               AI Vehicle Lifecycle Calendar for smarter fleet decisions. A live month-by-month plan 
